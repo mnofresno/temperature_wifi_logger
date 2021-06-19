@@ -2,7 +2,8 @@
 
 #include <ESP8266mDNS.h>
 #include <ArduinoOTA.h>
-#include "UploaderPage.h"
+#include "pages/uploader_html.h"
+#include "pages/core_js.h"
 
 #define UPDATE_SIZE_UNKNOWN 0XFFFFFFFF
 
@@ -22,7 +23,12 @@ void FirmwareUpdater::handle() {
 void FirmwareUpdater::setup_root_path() {
   _server->on("/", [&]() {
     authenticate_and_handle([&](){
-      _server->send(200, "text/html", serverIndex);
+      _server->send(200, "text/html", UPLOADER_HTML);
+    });
+  });
+  _server->on("/core.js", [&]() {
+    authenticate_and_handle([&](){
+      _server->send(200, "application/javascript", CORE_JS);
     });
   });
 }
