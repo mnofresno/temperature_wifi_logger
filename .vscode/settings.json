@@ -1,5 +1,14 @@
 {
     "files.associations": {
-        "functional": "cpp"
+        "functional": "cpp",
+        "string": "cpp",
+        "*.tcc": "cpp",
+        "array": "cpp",
+        "deque": "cpp",
+        "list": "cpp",
+        "unordered_map": "cpp",
+        "vector": "cpp",
+        "initializer_list": "cpp",
+        "regex": "cpp"
     }
 }
