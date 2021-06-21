@@ -2,22 +2,22 @@
 #define __CONFIGURATOR_H__
 
 #include "StoredConfig.h"
-#include <ESP8266WebServer.h>
+#include <ESPAsyncWebServer.h>
 
 typedef std::function<void(StoredConfig)> TEventConfigHandler;
 
 class Configurator {
   public:
-    Configurator(ESP8266WebServer &server, TEventConfigHandler onConfigChangeHandler);
+    Configurator(AsyncWebServer &server, TEventConfigHandler onConfigChangeHandler);
     bool hasConfig();
     StoredConfig * getConfig();
   private:
     bool isValidConfig(StoredConfig *config);
     void setup_routes();
-    void handleGet(const char contents[]);
-    void handlePost();
+    void handleGet(const char contents[], AsyncWebServerRequest *request);
+    void handlePost(AsyncWebServerRequest *request);
     std::function<String(const String&)> getProcessor(StoredConfig * config);
-    ESP8266WebServer * _server;
+    AsyncWebServer * _server;
     TEventConfigHandler _onConfigChangeHandler;
 };
 

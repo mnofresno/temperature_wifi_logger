@@ -2,16 +2,21 @@
 #define __STOREDCONFIG_H__
 
 #include <Arduino.h>
-
+#define STRING_FIELD_SIZE 64
 struct StoredConfig {
-  String wifiSSID;
-  String wifiKey ;
-  String targetHost;
-  String apiKey;
-  String apiKeyFieldName;
-  const char* wwwUsername;
-  const char* wwwPassword;
+  char wifiSSID[STRING_FIELD_SIZE];
+  char wifiKey[STRING_FIELD_SIZE];
+  char targetHost[STRING_FIELD_SIZE];
+  char apiKey[STRING_FIELD_SIZE];
+  char apiKeyFieldName[STRING_FIELD_SIZE];
+  char wwwUsername[STRING_FIELD_SIZE];
+  char wwwPassword[STRING_FIELD_SIZE];
   int reportingIntervalSeconds;
 };
 
+const int union_size = sizeof(StoredConfig);
+typedef union StoredConfigPacket{
+  StoredConfig structure;
+  byte store[union_size];
+};
 #endif // STOREDCONFIG_H

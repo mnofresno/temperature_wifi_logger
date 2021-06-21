@@ -5,12 +5,13 @@
 #include <ESP8266WiFi.h>
 #include "FirmwareUpdater.h"
 #include "arduino_secrets.h"
-#include <ESP8266WebServer.h>
+#include <ESPAsyncWebServer.h>
 #include <WiFiClientSecure.h> 
 #include <TimedAction.h>
 #include "Configurator.h"
 #include "StoredConfig.h"
 #include "pages/core_js.h"
+#include <EEPROM.h>
 
 // SoftAP config
 IPAddress ip(10, 0, 0, 1);
@@ -24,20 +25,25 @@ int CS_PIN = 13; // D7
 int SCK_PIN = 15; // D8
 // FOR DHC
 int DH_IN_PIN = 14;// D5
-int DH_GND_PIN = 16; // D0 // FIXME: We use this pin as GND because the board only provides one GND, must create a bridge
+int DH_GND_PIN = 20; // D1 // FIXME: We use this pin as GND because the board only provides one GND, must create a bridge
 // FOR WIFI STATION
-int RESET_WIFI_INPUT_PIN = 20; // D1
+int RESET_WIFI_INPUT_PIN = 16; // D0
 int RESET_WIFI_GND_PIN = 19; // D2 // FIXME: We use this pin as GND because the board only provides one GND, must create a bridge
 
 StoredConfig * _config;
 FirmwareUpdater firmwareUpdater;
-ESP8266WebServer server;
+AsyncWebServer server(80);
+AsyncEventSource events("/events");
+
 MAX6675 thermocouple(SCK_PIN, CS_PIN, SO_PIN);
 DHTesp dht;
 WiFiClientSecure client;
 
 void handleWebServer() {
-  server.handleClient();
+  // server.handleClient();
+  static char temp[128];
+  sprintf(temp, "Seconds since boot: %u", millis()/1000);
+  events.send(temp, "time"); //send event "time"
 }
 
 void handleFirmwareUpdater() {
@@ -91,7 +97,7 @@ bool initializeWifiIsOk() {
     String chipId = (String)ESP.getChipId();
     String status = WiFi.softAPConfig(ip, gateway, subnet) ? "Ready" : "Failed!";
     Serial.println("[Info] Config: " + status);
-    status = WiFi.softAPConfig(ip, gateway, subnet) ? "Ready" : "Failed!";
+    status = WiFi.softAP("ESPSensor_" + chipId) ? "Ready" : "Failed!";
     Serial.println("[Info] Standup: " + status);
     Serial.print("[Info] Soft-AP IP address = ");
     Serial.println(WiFi.softAPIP());
@@ -103,7 +109,7 @@ bool initializeWifiIsOk() {
   _config = configurator.getConfig();  
   WiFi.begin(_config->wifiSSID, _config->wifiKey);
   if (WiFi.waitForConnectResult() != WL_CONNECTED) {
-    Serial.println("[Failed] WiFi Connect Failed! Rebooting...");
+    Serial.println("[Error] WiFi Connect Failed! Rebooting...");
     delay(1000);
     ESP.restart();
     return false;
@@ -129,12 +135,13 @@ void initializeFirmwareUpdater() {
 }
 
 void initializeWebServer() {
+  server.addHandler(&events);
   Serial.println("[Starting] Initialize Webserver...");
-  server.begin(80);
-  server.on("/core.js", [&]() {
-    server.send(200, "application/javascript", CORE_JS);
+  server.on("/core.js", HTTP_GET, [&](AsyncWebServerRequest *request) {
+    request->send(200, "application/javascript", CORE_JS);
   });
   Serial.println("[Done] Webserver init");
+  server.begin();
 }
 
 void setup() {
@@ -165,7 +172,7 @@ void disableAllTasks() {
 void makeHTTPRequest(float h, float t, float tc) {
   // Check if any reads failed and exit early (to try again).
   if (isnan(h) || isnan(t) || isnan(tc)) {
-    Serial.println("Failed to read from DHT sensor!");
+    Serial.println("[Error] Failed to read from DHT sensor!");
     strcpy(humidityTemp, "Failed");
     strcpy(temperatureTemp,"Failed");
     strcpy(temperatureTempTC, "Failed");
