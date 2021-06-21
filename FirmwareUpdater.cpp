@@ -26,11 +26,6 @@ void FirmwareUpdater::setup_root_path() {
       _server->send(200, "text/html", UPLOADER_HTML);
     });
   });
-  _server->on("/core.js", [&]() {
-    authenticate_and_handle([&](){
-      _server->send(200, "application/javascript", CORE_JS);
-    });
-  });
 }
 
 void FirmwareUpdater::authenticate_and_handle(THandlerFunction handler) {

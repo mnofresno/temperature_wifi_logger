@@ -6,10 +6,16 @@
 #include "FirmwareUpdater.h"
 #include "arduino_secrets.h"
 #include <ESP8266WebServer.h>
-#include <WiFiClientSecure.h>
+#include <WiFiClientSecure.h> 
 #include <TimedAction.h>
 #include "Configurator.h"
 #include "StoredConfig.h"
+#include "pages/core_js.h"
+
+// SoftAP config
+IPAddress ip(10, 0, 0, 1);
+IPAddress gateway(10, 0, 0, 1);
+IPAddress subnet(255, 0, 0, 0);
 
 // CONNECTION PINS
 // FOR THERMOCOUPLE
@@ -23,13 +29,12 @@ int DH_GND_PIN = 16; // D0 // FIXME: We use PIN D0 as GND
 int RESET_WIFI_INPUT_PIN = 18; // D3
 int RESET_WIFI_GND_PIN = 17; // D4 // FIXME: We use PIN D4 as GND
 
-
+StoredConfig * _config;
 FirmwareUpdater firmwareUpdater;
 ESP8266WebServer server;
 MAX6675 thermocouple(SCK_PIN, CS_PIN, SO_PIN);
 DHTesp dht;
 WiFiClientSecure client;
-Configurator configurator;
 
 void handleWebServer() {
   server.handleClient();
@@ -50,18 +55,16 @@ TimedAction firmwareUpdaterTask = TimedAction(50, handleFirmwareUpdater);
 TimedAction serverTask = TimedAction(50, handleWebServer);
 TimedAction measurementTask = TimedAction(3000, loopMeasurements);
 
-// Replace with your unique Thing Speak WRITE API KEY
-const char* apiKey = SECRET_TS_API_KEY;
+void onConfigChange(StoredConfig config) {
+  Serial.println("New reporting interval received: " + (String)config.reportingIntervalSeconds);
+  measurementTask.disable();
+  measurementTask.setInterval(config.reportingIntervalSeconds * 1000);
+  measurementTask.enable();
+}
+
+Configurator configurator(server, onConfigChange);
 
 const char* resource = "/update?api_key=";
-
-// Thing Speak API server 
-const char* targetHost = "api.thingspeak.com";
-
-const char* ssid = SECRET_WIFI_SSID;
-const char* password = SECRET_WIFI_PASSWORD;
-const char* www_username = SECRET_WWW_USERNAME;
-const char* www_password = SECRET_WWW_PASSWORD;
 
 // Temporary variables
 static char temperatureTemp[7];
@@ -73,34 +76,53 @@ void setupGNDPin(int gndPin) {
   digitalWrite(gndPin, LOW);
 }
 
-void initializeWifi() {
+bool initializeWifiIsOk() {
+  Serial.println("Initialize Wifi...");
   setupGNDPin(RESET_WIFI_GND_PIN);
   pinMode(RESET_WIFI_INPUT_PIN, INPUT_PULLUP);
   delay(300);
-  if (!configurator.hasConfig() || digitalRead(RESET_WIFI_INPUT_PIN) == HIGH) {
+  bool resetPinIsHigh = digitalRead(RESET_WIFI_INPUT_PIN) == HIGH;
+  String resetPinMessage = resetPinIsHigh
+    ? "High"
+    : "Low";
+  Serial.println("Reset INPUT PIN is: " + resetPinMessage);
+  if (!configurator.hasConfig() || resetPinIsHigh) {
+    Serial.println("Initialize Wifi SoftAP...");
     WiFi.mode(WIFI_AP); 
     String chipId = (String)ESP.getChipId();
-    WiFi.softAP("ESPSensor_" + chipId);
-  } else {
-    WiFi.mode(WIFI_STA);
-    StoredConfig * config = configurator.getConfig();  
-    WiFi.begin(config->wifiSSID, config->wifiKey);
-    if (WiFi.waitForConnectResult() != WL_CONNECTED) {
-      Serial.println("WiFi Connect Failed! Rebooting...");
-      delay(1000);
-      ESP.restart();
-    }
-    client.setInsecure();
+    String status = WiFi.softAPConfig(ip, gateway, subnet) ? "Ready" : "Failed!";
+    Serial.println("Config: " + status);
+    status = WiFi.softAPConfig(ip, gateway, subnet) ? "Ready" : "Failed!";
+    Serial.println("Standup: " + status);
+    Serial.print("Soft-AP IP address = ");
+    Serial.println(WiFi.softAPIP());
+    Serial.println("Generated SoftAP OK...");
+    return false;
   }
+  Serial.println("Initialize Wifi STA...");
+  WiFi.mode(WIFI_STA);
+  _config = configurator.getConfig();  
+  WiFi.begin(_config->wifiSSID, _config->wifiKey);
+  if (WiFi.waitForConnectResult() != WL_CONNECTED) {
+    Serial.println("WiFi Connect Failed! Rebooting...");
+    delay(1000);
+    ESP.restart();
+    return false;
+  }
+  client.setInsecure();
+  Serial.println("Connected Wifi OK...");
+  return true;
 }
 
 void initializeDHT() {
+  Serial.println("Initialize DHT...");
   setupGNDPin(DH_GND_PIN);
   dht.setup(DH_IN_PIN, DHTesp::DHT11);
 }
 
 void initializeFirmwareUpdater() {
-  firmwareUpdater.setup(www_username, www_password, server);
+  Serial.println("Initialzie Firmware Updater...");
+  firmwareUpdater.setup(_config->wwwUsername, _config->wwwPassword, server);
   Serial.println("/ in your browser to see it working");
   Serial.print("Open http://");
   Serial.print(WiFi.localIP());
@@ -108,26 +130,37 @@ void initializeFirmwareUpdater() {
 }
 
 void initializeWebServer() {
+  Serial.println("Initialize Webserver...");
   server.begin(80);
-  /*server.on("/status", [&]() {
-    server.send(200, "application/json", getLastReadings());
-  }); */
+  server.on("/core.js", [&]() {
+    server.send(200, "application/javascript", CORE_JS);
+  });
+  Serial.println("Webserver init OK...");
 }
 
 void setup() {
   Serial.begin(115200);
   delay(500);
-  initializeWifi();
-  initializeDHT();
-  delay(250);
-  initializeFirmwareUpdater();
-  delay(250);
+  if (initializeWifiIsOk()) {
+    initializeDHT();
+    delay(250);
+    initializeFirmwareUpdater();
+    delay(250);
+    enableAllTasks();
+  } else {
+    disableAllTasks();
+  }
   initializeWebServer();
-
-  Serial.println("MAX6675 test");
-
-  delay(500);
 }
+
+void enableAllTasks() {
+  measurementTask.enable();
+}
+
+void disableAllTasks() {
+  measurementTask.disable();
+}
+
 
 // Make an HTTP request to Thing Speak
 void makeHTTPRequest(float h, float t, float tc) {
@@ -162,11 +195,11 @@ void makeHTTPRequest(float h, float t, float tc) {
   }
   
   Serial.print("Connecting to "); 
-  Serial.print(targetHost);
+  Serial.print(_config->targetHost);
   
   WiFiClient client;
   int retries = 5;
-  while(!!!client.connect(targetHost, 80) && (retries-- > 0)) {
+  while(!!!client.connect(_config->targetHost, 80) && (retries-- > 0)) {
     Serial.print(".");
   }
   Serial.println();
@@ -176,9 +209,9 @@ void makeHTTPRequest(float h, float t, float tc) {
   
   Serial.print("Request resource: "); 
   Serial.println(resource);
-  client.print(String("GET ") + resource + apiKey + "&field1=" + humidityTemp + "&field2=" + temperatureTemp + "&field3=" + temperatureTempTC +
+  client.print(String("GET ") + resource + _config->apiKey + "&field1=" + humidityTemp + "&field2=" + temperatureTemp + "&field3=" + temperatureTempTC +
                   " HTTP/1.1\r\n" +
-                  "Host: " + targetHost + "\r\n" + 
+                  "Host: " + _config->targetHost + "\r\n" + 
                   "Connection: close\r\n\r\n");
                   
   int timeout = 5 * 10; // 5 seconds             

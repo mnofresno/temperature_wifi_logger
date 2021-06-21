@@ -1,10 +1,17 @@
 #include "Configurator.h"
 #include "pages/config_html.h"
-#include "pages/core_js.h"
 #include <EEPROM.h>
+#include <Arduino.h>
+
+Configurator::Configurator(ESP8266WebServer &server, TEventConfigHandler onConfigChangeHandler) {
+  SPIFFS.begin();
+  _server = &server;
+  _onConfigChangeHandler = onConfigChangeHandler;
+  setup_routes();
+}
 
 bool Configurator::hasConfig() {
-  return Configurator::isValidConfig(getConfig());
+  return isValidConfig(getConfig());
 }
 
 StoredConfig * Configurator::getConfig() {
@@ -15,79 +22,84 @@ StoredConfig * Configurator::getConfig() {
 
 bool Configurator::isValidConfig(StoredConfig * config) {
   return config->wifiSSID != NULL
-    && config->wifiKey != NULL;
+    && config->wifiKey != NULL
+    && config->wifiSSID != ""
+    && config->wifiKey != "";
 }
 
-// #define UPDATE_SIZE_UNKNOWN 0XFFFFFFFF
+void Configurator::setup_routes() {
+  _server->on("/config", HTTP_GET, [&]() {
+    handleGet(CONFIG_HTML);
+  });
+  _server->on("/config", HTTP_POST, [&]() {
+    handlePost();
+  });
+}
 
-// void Configurator::setup(const char* username, const char* password, ESP8266WebServer &server) {
-//   _username = username;
-//   _password = password;
-//   _server = &server;
-//   setup_root_path();
-//   setup_update_path();
-//   ArduinoOTA.begin();
-// }
+std::function<String(const String&)> Configurator::getProcessor(StoredConfig * config) {
+  return [=](const String& configField) -> String {
+    if (configField == "wifiSSID")
+      return config->wifiSSID;
+    if (configField == "wifiKey")
+      return config->wifiKey;
+    if (configField == "wwwUsername")
+      return config->wwwUsername;
+    if (configField == "wwwPassword")
+      return config->wwwPassword;
+    if (configField == "targetHost")
+      return config->targetHost;
+    if (configField == "apiKeyFieldName")
+      return config->apiKeyFieldName;
+    if (configField == "apiKey")
+      return config->apiKey;
+    if (configField == "reportingIntervalSeconds")
+      return (String)config->reportingIntervalSeconds;
+    return String();
+  };
+}
 
-// void FirmwareUpdater::handle() {
-//   ArduinoOTA.handle();
-// }
+void Configurator::handleGet(const char contents[]) {
+  Serial.println("Received Config GET...");
+  _server->send_P(200, "text/html", contents); //, getProcessor(getConfig()));
+}
 
-// void FirmwareUpdater::setup_root_path() {
-//   _server->on("/", [&]() {
-//     authenticate_and_handle([&](){
-//       _server->send(200, "text/html", UPLOADER_HTML);
-//     });
-//   });
-//   _server->on("/core.js", [&]() {
-//     authenticate_and_handle([&](){
-//       _server->send(200, "application/javascript", CORE_JS);
-//     });
-//   });
-// }
-
-// void FirmwareUpdater::authenticate_and_handle(THandlerFunction handler) {
-//   if (!_server->authenticate(_username, _password)) {
-//     // FIXME: Maybe we can add a flag: return this or redirect?
-//     // _server->send(200, "Auth error");
-//     return _server->requestAuthentication();
-//   }
-//   handler();
-// }
-
-// void FirmwareUpdater::setup_update_path() {
-//   _server->on("/update", HTTP_POST, [&]() {
-//     finish_update();
-//   }, [&]() {
-//     handle_update();
-//   });
-// }
-
-// void FirmwareUpdater::handle_update() {
-//   HTTPUpload& upload = _server->upload();
-//   if (upload.status == UPLOAD_FILE_START) {
-//     Serial.printf("Update: %s\n", upload.filename.c_str());
-//     if (!Update.begin(UPDATE_SIZE_UNKNOWN)) { //start with max available size
-//       Update.printError(Serial);
-//     }
-//   } else if (upload.status == UPLOAD_FILE_WRITE) {
-//     if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
-//       Update.printError(Serial);
-//     }
-//   } else if (upload.status == UPLOAD_FILE_END) {
-//     if (Update.end(true)) { //true to set the size to the current progress
-//       Serial.printf("Update Success: %u\nRebooting...\n", upload.totalSize);
-//     } else {
-//       Update.printError(Serial);
-//     }
-//   }
-// }
-
-// void FirmwareUpdater::finish_update() {
-//   authenticate_and_handle([&](){
-//     _server->sendHeader("Connection", "close");
-//     _server->send(200, "text/plain", (Update.hasError()) ? "FAIL" : "OK");
-//     delay(500);
-//     ESP.restart();
-//   });
-// }
+void Configurator::handlePost() {
+  Serial.println("Received Config Post...");
+  String missingFields = "";
+  String fields[] = {
+    "wifiSSID",
+    "wifiKey",
+    "wwwUsername",
+    "wwwPassword",
+    "targetHost",
+    "apiKeyFieldName",
+    "apiKey",
+    "reportingIntervalSeconds"
+  };
+  for (int i = 0; i < sizeof(fields) / sizeof(String); i++) {
+    String field = fields[i];
+    Serial.println("Analyzing field: " + field);
+    if (!_server->hasArg(field)) {
+      missingFields += field + ", ";
+    }      
+  }
+  if (missingFields != "") {
+    Serial.println("Missing Fields...");
+    _server->send(422, "application/json", "{\"missing_fields\": \"" + missingFields + "\"}");
+  }
+  StoredConfig config = StoredConfig {
+    _server->arg("wifiSSID"),
+    _server->arg("wifiKey"),
+    _server->arg("wwwUsername"),
+    _server->arg("wwwPassword"),
+    _server->arg("targetHost"),
+    _server->arg("apiKeyFieldName").c_str(),
+    _server->arg("apiKey").c_str(),
+    _server->arg("reportingIntervalSeconds").toInt()
+  };
+  _onConfigChangeHandler(config);
+  Serial.println("Saving Fields...");
+  EEPROM.put(0, config);
+  Serial.println("Saved Fields OK");
+  _server->send(201, "application/json", "{\"status\": \"ok\"}");
+}
