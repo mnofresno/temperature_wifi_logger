@@ -24,10 +24,10 @@ int CS_PIN = 13; // D7
 int SCK_PIN = 15; // D8
 // FOR DHC
 int DH_IN_PIN = 14;// D5
-int DH_GND_PIN = 16; // D0 // FIXME: We use PIN D0 as GND
+int DH_GND_PIN = 16; // D0 // FIXME: We use this pin as GND because the board only provides one GND, must create a bridge
 // FOR WIFI STATION
-int RESET_WIFI_INPUT_PIN = 18; // D3
-int RESET_WIFI_GND_PIN = 17; // D4 // FIXME: We use PIN D4 as GND
+int RESET_WIFI_INPUT_PIN = 20; // D1
+int RESET_WIFI_GND_PIN = 19; // D2 // FIXME: We use this pin as GND because the board only provides one GND, must create a bridge
 
 StoredConfig * _config;
 FirmwareUpdater firmwareUpdater;
@@ -74,68 +74,67 @@ static char temperatureTempTC[7];
 void setupGNDPin(int gndPin) {
   pinMode(gndPin, OUTPUT);
   digitalWrite(gndPin, LOW);
+  delay(100);
 }
 
 bool initializeWifiIsOk() {
-  Serial.println("Initialize Wifi...");
+  Serial.println("[Starting] Initialize Wifi...");
   setupGNDPin(RESET_WIFI_GND_PIN);
   pinMode(RESET_WIFI_INPUT_PIN, INPUT_PULLUP);
   delay(300);
-  bool resetPinIsHigh = digitalRead(RESET_WIFI_INPUT_PIN) == HIGH;
-  String resetPinMessage = resetPinIsHigh
-    ? "High"
-    : "Low";
-  Serial.println("Reset INPUT PIN is: " + resetPinMessage);
-  if (!configurator.hasConfig() || resetPinIsHigh) {
-    Serial.println("Initialize Wifi SoftAP...");
+  bool configResetEnabled = digitalRead(RESET_WIFI_INPUT_PIN) == HIGH;
+  String configResetMessage = configResetEnabled ? "Enabled" : "Disabled";
+  Serial.println("[Info] Config Reset is: " + configResetMessage);
+  if (!configurator.hasConfig() || configResetEnabled) {
+    Serial.println("[Starting] Initialize Wifi SoftAP...");
     WiFi.mode(WIFI_AP); 
     String chipId = (String)ESP.getChipId();
     String status = WiFi.softAPConfig(ip, gateway, subnet) ? "Ready" : "Failed!";
-    Serial.println("Config: " + status);
+    Serial.println("[Info] Config: " + status);
     status = WiFi.softAPConfig(ip, gateway, subnet) ? "Ready" : "Failed!";
-    Serial.println("Standup: " + status);
-    Serial.print("Soft-AP IP address = ");
+    Serial.println("[Info] Standup: " + status);
+    Serial.print("[Info] Soft-AP IP address = ");
     Serial.println(WiFi.softAPIP());
-    Serial.println("Generated SoftAP OK...");
+    Serial.println("[Done] Generated SoftAP");
     return false;
   }
-  Serial.println("Initialize Wifi STA...");
+  Serial.println("[Starting] Initialize Wifi STA...");
   WiFi.mode(WIFI_STA);
   _config = configurator.getConfig();  
   WiFi.begin(_config->wifiSSID, _config->wifiKey);
   if (WiFi.waitForConnectResult() != WL_CONNECTED) {
-    Serial.println("WiFi Connect Failed! Rebooting...");
+    Serial.println("[Failed] WiFi Connect Failed! Rebooting...");
     delay(1000);
     ESP.restart();
     return false;
   }
   client.setInsecure();
-  Serial.println("Connected Wifi OK...");
+  Serial.println("[Done] Connected Wifi");
   return true;
 }
 
 void initializeDHT() {
-  Serial.println("Initialize DHT...");
+  Serial.println("[Starting] Initialize DHT...");
   setupGNDPin(DH_GND_PIN);
   dht.setup(DH_IN_PIN, DHTesp::DHT11);
 }
 
 void initializeFirmwareUpdater() {
-  Serial.println("Initialzie Firmware Updater...");
+  Serial.println("[Starting] Initialzie Firmware Updater...");
   firmwareUpdater.setup(_config->wwwUsername, _config->wwwPassword, server);
-  Serial.println("/ in your browser to see it working");
+  Serial.println("[Info] / in your browser to see it working");
   Serial.print("Open http://");
   Serial.print(WiFi.localIP());
   Serial.println("/ in your browser to see it working");
 }
 
 void initializeWebServer() {
-  Serial.println("Initialize Webserver...");
+  Serial.println("[Starting] Initialize Webserver...");
   server.begin(80);
   server.on("/core.js", [&]() {
     server.send(200, "application/javascript", CORE_JS);
   });
-  Serial.println("Webserver init OK...");
+  Serial.println("[Done] Webserver init");
 }
 
 void setup() {

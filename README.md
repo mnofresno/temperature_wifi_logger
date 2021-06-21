@@ -24,3 +24,9 @@ Open this projects main file esp32-over-the-air-programming.ino with the Arduino
 
 Open your web browser and navigate to the IP you've seen on the Serial Monitor during the device boot up.
 Input your credentials that you've configured in the first step of this README, select the file you've created in the compilation step. Then push upload and wait the progress bar reaches 100%, the device will reset and redirect you to the home page of the web server. You've successfully written a new firmware with Over The Air!
+
+# Hardware Assembly
+
+This is the Wemos D1 R1 Mini pinout for reference of the pins configuration
+
+![Wemos D1 R1 Mini ESP8266 Pinout](esp8266-wemos-d1-mini-pinout.webp)
