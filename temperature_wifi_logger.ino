@@ -33,6 +33,7 @@ DHTesp dht;
 ReportingClient client("api.thingspeak.com", SECRET_TS_API_KEY);
 WiFiManager wm;
 WiFiManagerParameter api_key_param("apiKey", "API Key", "please input your key", 20);
+WiFiManagerParameter target_url_param("targetUrl", "Target URL", "introduce the target URL (apiKey is a placeholder)", 64);
 WiFiManagerParameter report_interval_param("reportInterval", "Reporting Interval", "300", 32);
 
 WiFiClientSecure wifiClient;
@@ -77,11 +78,30 @@ void onParamsSave() {
   Serial.println("[Info] saveParamCallback callback fired");
   settings.save(
     String(report_interval_param.getValue()).toInt(),
-    String(api_key_param.getValue())
+    String(api_key_param.getValue()),
+    String(target_url_param.getValue())
   );
   updateInterval();
   measurementTask.check();
   client.setApiKey(api_key_param.getValue());
+  client.setTargetUrl(target_url_param.getValue());
+}
+
+void setupParams() {
+  auto storedValues = settings.get(); 
+
+  client.setApiKey(storedValues.apiKey);
+  client.setTargetUrl(storedValues.targetUrl);
+  doSetInterval(storedValues.reportInterval);
+  api_key_param.setValue(storedValues.apiKey, 20);
+  target_url_param.setValue(storedValues.targetUrl, 64);
+  report_interval_param.setValue(String(storedValues.reportInterval).c_str(), sizeof(int));
+
+  wm.setParamsPage(true);
+  wm.setSaveParamsCallback(onParamsSave);
+  wm.addParameter(&api_key_param);
+  wm.addParameter(&report_interval_param);
+  wm.addParameter(&target_url_param);
 }
 
 void setup() {
@@ -90,18 +110,9 @@ void setup() {
 
   bool res;
 
-  auto storedValues = settings.get(); 
-
-  client.setApiKey(storedValues.apiKey);
-  api_key_param.setValue(storedValues.apiKey, 20);
-  report_interval_param.setValue(String(storedValues.reportInterval).c_str(), sizeof(int));
-
   wm.setWebServerCallback(bindServerCallback);
   wm.setConfigPortalBlocking(false);
-  wm.setParamsPage(true);
-  wm.setSaveParamsCallback(onParamsSave);
-  wm.addParameter(&api_key_param);
-  wm.addParameter(&report_interval_param);
+  setupParams();
 
   res = wm.autoConnect(); // password protected ap
 
@@ -136,12 +147,16 @@ void loop() {
   firmwareUpdater.handle();
 }
 
+void doSetInterval(int interval) {
+  measurementTask.setInterval(interval * 1000);
+}
+
 void updateInterval() {
   int newReportInterval = settings.get().reportInterval;
   if (reportInterval != newReportInterval) {
     Serial.println("[Info] New report interval: " + String(newReportInterval));
     reportInterval = newReportInterval;
-    measurementTask.setInterval(reportInterval * 1000);
+    doSetInterval(reportInterval);
   }
 }
 

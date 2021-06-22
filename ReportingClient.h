@@ -6,8 +6,8 @@
 
 class ReportingClient {
   public:
-    ReportingClient(String targetHost, String apiKey) {
-      setTargetHost(targetHost);
+    ReportingClient(String targetUrl, String apiKey) {
+      setTargetUrl(targetUrl);
       setApiKey(apiKey);
     }
     
@@ -15,8 +15,8 @@ class ReportingClient {
       _apiKey = apiKey;
     }
 
-    void setTargetHost(String targetHost) {
-      _targetHost = targetHost;
+    void setTargetUrl(String targetUrl) {
+      _targetUrl = targetUrl;
     }
 
     void report(float h, float t, float tc) {
@@ -54,10 +54,10 @@ class ReportingClient {
       }
       
       Serial.print("Connecting to "); 
-      Serial.print(_targetHost);
+      Serial.print(_targetUrl);
       WiFiClient client;
       int retries = 5;
-      while(!!!client.connect(_targetHost, 80) && (retries-- > 0)) {
+      while(!!!client.connect(_targetUrl, 80) && (retries-- > 0)) {
         Serial.print(".");
       }
       Serial.println();
@@ -65,10 +65,10 @@ class ReportingClient {
         LogError("Failed to connect, going back to sleep");
       }
       
-      LogInfo("Request resource: " + resource); 
+      LogInfo("Request resource: " + resource);
       client.print(String("GET ") + resource + _apiKey + "&field1=" + humidityTemp + "&field2=" + temperatureTemp + "&field3=" + temperatureTempTC +
                       " HTTP/1.1\r\n" +
-                      "Host: " + _targetHost + "\r\n" + 
+                      "Host: " + _targetUrl + "\r\n" + 
                       "Connection: close\r\n\r\n");
                       
       int timeout = 5 * 10; // 5 seconds             
@@ -88,7 +88,7 @@ class ReportingClient {
 
   private:
     String resource = "/update?api_key=";
-    String _targetHost;
+    String _targetUrl;
     String _apiKey;
     void LogInfo(String payload) {
       Serial.println("[Info] " + payload);
