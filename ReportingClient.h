@@ -7,10 +7,18 @@
 class ReportingClient {
   public:
     ReportingClient(String targetHost, String apiKey) {
-      _targetHost = targetHost;
-      _apiKey = apiKey;
+      setTargetHost(targetHost);
+      setApiKey(apiKey);
     }
     
+    void setApiKey(String apiKey) {
+      _apiKey = apiKey;
+    }
+
+    void setTargetHost(String targetHost) {
+      _targetHost = targetHost;
+    }
+
     void report(float h, float t, float tc) {
       // Temporary variables
       static char temperatureTemp[7];

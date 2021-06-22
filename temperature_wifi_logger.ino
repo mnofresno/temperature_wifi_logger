@@ -11,6 +11,9 @@
 #include <WiFiManager.h>
 #include "ReportingClient.h"
 #include <WiFiClientSecure.h>
+#include "SettingsStorage.h"
+
+int reportInterval = 300;
 
 // CONNECTION PINS
 // FOR THERMOCOUPLE
@@ -29,11 +32,15 @@ MAX6675 thermocouple(SCK_PIN, CS_PIN, SO_PIN);
 DHTesp dht;
 ReportingClient client("api.thingspeak.com", SECRET_TS_API_KEY);
 WiFiManager wm;
+WiFiManagerParameter api_key_param("apiKey", "API Key", "please input your key", 20);
+WiFiManagerParameter report_interval_param("reportInterval", "Reporting Interval", "300", 32);
+
 WiFiClientSecure wifiClient;
+SettingsStorage settings;
 
 void loopMeasurements();
 
-TimedAction measurementTask = TimedAction(300000, loopMeasurements);
+TimedAction measurementTask = TimedAction(reportInterval * 1000, loopMeasurements);
 
 void setupGNDPin(int gndPin) {
   pinMode(gndPin, OUTPUT);
@@ -66,14 +73,35 @@ void bindServerCallback(){
   initializeFirmwareUpdater();
 }
 
+void onParamsSave() {
+  Serial.println("[Info] saveParamCallback callback fired");
+  settings.save(
+    String(report_interval_param.getValue()).toInt(),
+    String(api_key_param.getValue())
+  );
+  updateInterval();
+  measurementTask.check();
+  client.setApiKey(api_key_param.getValue());
+}
+
 void setup() {
   WiFi.mode(WIFI_STA); // explicitly set mode, esp defaults to STA+AP
   Serial.begin(115200);
 
   bool res;
 
+  auto storedValues = settings.get(); 
+
+  client.setApiKey(storedValues.apiKey);
+  api_key_param.setValue(storedValues.apiKey, 20);
+  report_interval_param.setValue(String(storedValues.reportInterval).c_str(), sizeof(int));
+
   wm.setWebServerCallback(bindServerCallback);
   wm.setConfigPortalBlocking(false);
+  wm.setParamsPage(true);
+  wm.setSaveParamsCallback(onParamsSave);
+  wm.addParameter(&api_key_param);
+  wm.addParameter(&report_interval_param);
 
   res = wm.autoConnect(); // password protected ap
 
@@ -106,6 +134,15 @@ void loop() {
   wm.process();
   measurementTask.check();
   firmwareUpdater.handle();
+}
+
+void updateInterval() {
+  int newReportInterval = settings.get().reportInterval;
+  if (reportInterval != newReportInterval) {
+    Serial.println("[Info] New report interval: " + String(newReportInterval));
+    reportInterval = newReportInterval;
+    measurementTask.setInterval(reportInterval * 1000);
+  }
 }
 
 void loopMeasurements() {
