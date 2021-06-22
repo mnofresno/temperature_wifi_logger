@@ -7,10 +7,11 @@
 
 #define UPDATE_SIZE_UNKNOWN 0XFFFFFFFF
 
-void FirmwareUpdater::setup(const char* username, const char* password, ESP8266WebServer &server) {
+void FirmwareUpdater::setup(const char* username, const char* password, ESP8266WebServer *server) {
+  Serial.println("[Info] Setup firmware updater");
   _username = username;
   _password = password;
-  _server = &server;
+  _server = server;
   setup_root_path();
   setup_update_path();
   ArduinoOTA.begin();
@@ -21,7 +22,7 @@ void FirmwareUpdater::handle() {
 }
 
 void FirmwareUpdater::setup_root_path() {
-  _server->on("/", [&]() {
+  _server->on("/firmware", [&]() {
     authenticate_and_handle([&](){
       _server->send(200, "text/html", UPLOADER_HTML);
     });

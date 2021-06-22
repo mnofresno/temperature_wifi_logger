@@ -7,7 +7,7 @@ typedef std::function<void(void)> THandlerFunction;
 
 class FirmwareUpdater {
   public:
-    void setup(const char* username, const char* password, ESP8266WebServer &server);
+    void setup(const char* username, const char* password, ESP8266WebServer *server);
     void handle();
   private:
     void setup_root_path();
@@ -16,7 +16,7 @@ class FirmwareUpdater {
     void handle_update();
     void finish_update();
     
-    ESP8266WebServer * _server;
+    ESP8266WebServer *_server;
     const char* _username;
     const char* _password;
 };
